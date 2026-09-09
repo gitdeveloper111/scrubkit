@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ScrubKit — Strip secrets & PII before you paste into an AI chat</title>
+<meta name="description" content="Free, offline-capable tool that finds API keys, tokens, emails, card numbers and other PII in text and swaps them for reversible placeholders. Runs entirely in your browser — nothing is uploaded.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧼</text></svg>">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#0e1116; --panel:#161b22; --panel-2:#1c2230; --line:#2a3341;
+  --ink:#e6edf3; --ink-dim:#8b98a8; --ink-faint:#5d6b7d;
+  --accent:#4ea1ff; --accent-dim:#1f4d80;
+  --warn:#ffb454; --danger:#ff6b6b; --ok:#3fb950;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:var(--accent)}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+
+/* ---------- header ---------- */
+header{border-bottom:1px solid var(--line);background:rgba(14,17,22,.85);backdrop-filter:blur(8px);position:sticky;top:0;z-index:20}
+.hbar{display:flex;align-items:center;gap:14px;height:58px}
+.logo{font-weight:700;letter-spacing:-.02em;font-size:17px;display:flex;align-items:center;gap:8px}
+.logo b{color:var(--accent)}
+.hspace{flex:1}
+.hlink{color:var(--ink-dim);text-decoration:none;font-size:14px}
+.hlink:hover{color:var(--ink)}
+.btn{display:inline-block;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);
+  padding:8px 14px;border-radius:7px;font-size:14px;text-decoration:none;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:var(--accent-dim)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#06111e;font-weight:600}
+.btn.pri:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* ---------- hero ---------- */
+.hero{padding:46px 0 26px;text-align:center}
+h1{font-size:clamp(28px,4.4vw,44px);line-height:1.12;margin:0 0 14px;letter-spacing:-.025em}
+h1 .hl{color:var(--accent)}
+.sub{color:var(--ink-dim);font-size:clamp(15px,1.7vw,18px);max-width:660px;margin:0 auto 18px}
+.badges{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:6px}
+.badge{font-size:12px;color:var(--ink-dim);border:1px solid var(--line);border-radius:999px;padding:4px 11px;background:var(--panel)}
+.badge b{color:var(--ok)}
+
+/* ---------- tool ---------- */
+.tool{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin:22px 0 10px}
+.tabs{display:flex;border-bottom:1px solid var(--line);background:var(--panel-2)}
+.tab{padding:12px 18px;font-size:14px;cursor:pointer;color:var(--ink-dim);border:none;background:none;font-family:inherit;
+  border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--ink);border-bottom-color:var(--accent)}
+.tab:hover{color:var(--ink)}
+.panes{padding:0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
+@media(max-width:860px){.grid{grid-template-columns:1fr}}
+.cell{padding:14px 16px 16px}
+.cell+.cell{border-left:1px solid var(--line)}
+@media(max-width:860px){.cell+.cell{border-left:none;border-top:1px solid var(--line)}}
+.cellhead{display:flex;align-items:center;gap:10px;margin-bottom:9px;min-height:30px}
+.cellhead h3{font-size:13px;margin:0;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-dim);font-weight:600}
+.grow{flex:1}
+textarea{width:100%;min-height:270px;background:var(--bg);color:var(--ink);border:1px solid var(--line);
+  border-radius:9px;padding:12px;font-family:var(--mono);font-size:13px;line-height:1.62;resize:vertical;tab-size:2}
+textarea:focus{outline:none;border-color:var(--accent-dim)}
+textarea::placeholder{color:var(--ink-faint)}
+.out{min-height:270px;max-height:520px;overflow:auto;background:var(--bg);border:1px solid var(--line);
+  border-radius:9px;padding:12px;font-family:var(--mono);font-size:13px;line-height:1.62;white-space:pre-wrap;word-break:break-word}
+.out .tok{background:var(--accent-dim);color:#dbeaff;border-radius:4px;padding:1px 4px;font-weight:600}
+.out .ph{color:var(--ink-faint)}
+.mini{font-size:12px;color:var(--ink-dim)}
+.small{font-size:12.5px;color:var(--ink-dim)}
+
+/* findings */
+.findbar{display:flex;flex-wrap:wrap;gap:6px;padding:11px 16px;border-top:1px solid var(--line);background:var(--panel-2);align-items:center;min-height:46px}
+.chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;background:var(--bg);display:flex;gap:6px;align-items:center}
+.chip .n{color:var(--accent);font-weight:700;font-family:var(--mono)}
+.chip.g-secret{border-color:#5a3030}
+.chip.g-pii{border-color:#5a4a30}
+.chip.g-infra{border-color:#30455a}
+.none{color:var(--ink-faint);font-size:12.5px}
+
+/* toggles */
+.opts{padding:12px 16px;border-top:1px solid var(--line);background:var(--panel-2)}
+.opts summary{cursor:pointer;font-size:13px;color:var(--ink-dim);user-select:none}
+.opts summary:hover{color:var(--ink)}
+.toggles{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}
+.tg{font-size:12px;border:1px solid var(--line);border-radius:6px;padding:5px 9px;cursor:pointer;background:var(--bg);color:var(--ink-faint);user-select:none;font-family:var(--mono)}
+.tg.on{color:var(--ink);border-color:var(--accent-dim);background:var(--panel)}
+.tgrow{display:flex;gap:8px;align-items:center;margin-top:11px;flex-wrap:wrap}
+
+/* ---------- sections ---------- */
+section{padding:44px 0;border-top:1px solid var(--line);margin-top:34px}
+h2{font-size:clamp(21px,2.6vw,28px);margin:0 0 10px;letter-spacing:-.02em}
+.lede{color:var(--ink-dim);max-width:680px;margin:0 0 22px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:17px}
+.card h4{margin:0 0 7px;font-size:15px}
+.card p{margin:0;color:var(--ink-dim);font-size:14px}
+.steps{counter-reset:s;display:grid;gap:11px;max-width:720px}
+.step{display:flex;gap:13px;align-items:flex-start}
+.step .num{flex:none;width:25px;height:25px;border-radius:50%;background:var(--panel-2);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:12.5px;color:var(--accent);font-family:var(--mono);margin-top:1px}
+.step p{margin:0;color:var(--ink-dim);font-size:14.5px}
+.step b{color:var(--ink)}
+
+/* pro */
+.pro{background:linear-gradient(180deg,var(--panel) 0%,var(--panel-2) 100%);border:1px solid var(--accent-dim);border-radius:14px;padding:26px}
+.prohead{display:flex;flex-wrap:wrap;align-items:flex-start;gap:18px;margin-bottom:18px}
+.price{font-size:34px;font-weight:700;letter-spacing:-.02em}
+.price span{font-size:14px;color:var(--ink-dim);font-weight:400}
+.plist{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:9px}
+.plist li{color:var(--ink-dim);font-size:14.5px;padding-left:23px;position:relative}
+.plist li::before{content:"→";position:absolute;left:0;color:var(--accent)}
+.plist li b{color:var(--ink)}
+
+table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{color:var(--ink-dim);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+td.c{text-align:center}
+.yes{color:var(--ok);font-weight:700}
+.no{color:var(--ink-faint)}
+
+details.faq{border-bottom:1px solid var(--line);padding:13px 0}
+details.faq summary{cursor:pointer;font-weight:600;font-size:15px;list-style:none}
+details.faq summary::-webkit-details-marker{display:none}
+details.faq summary::before{content:"+ ";color:var(--accent);font-family:var(--mono)}
+details.faq[open] summary::before{content:"− "}
+details.faq p{color:var(--ink-dim);font-size:14.5px;margin:9px 0 2px;max-width:720px}
+
+footer{border-top:1px solid var(--line);padding:26px 0 40px;color:var(--ink-faint);font-size:13px}
+footer a{color:var(--ink-dim)}
+.note{background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--warn);
+  border-radius:0 8px 8px 0;padding:12px 15px;font-size:13.5px;color:var(--ink-dim);margin:18px 0}
+.copied{color:var(--ok);font-size:12px}
+kbd{font-family:var(--mono);font-size:11.5px;background:var(--panel-2);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:1px 5px}
+h1,h2,h3,h4{text-wrap:balance}
+.badge,.cellhead h3,th{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap hbar">
+    <div class="logo">🧼 Scrub<b>Kit</b></div>
+    <div class="hspace"></div>
+    <a class="hlink" href="#how">How it works</a>
+    <a class="hlink" href="#detects">What it catches</a>
+    <a class="btn pri" href="#pro">Get the Pro Pack</a>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="hero">
+    <h1>Strip secrets and PII out of text<br><span class="hl">before</span> you paste it into an AI chat.</h1>
+    <p class="sub">Paste a log, a stack trace, a config file or a customer email. ScrubKit swaps every API key, token,
+      address and card number for a reversible placeholder — then puts the real values back into the model's reply.</p>
+    <div class="badges">
+      <span class="badge"><b>100%</b> in your browser</span>
+      <span class="badge">Zero network requests</span>
+      <span class="badge">No account, no upload</span>
+      <span class="badge">Reversible</span>
+    </div>
+  </div>
+
+  <!-- ============ TOOL ============ -->
+  <div class="tool">
+    <div class="tabs">
+      <button class="tab on" data-tab="scrub">1 · Scrub</button>
+      <button class="tab" data-tab="restore">2 · Restore the reply</button>
+    </div>
+
+    <div class="panes" id="pane-scrub">
+      <div class="grid">
+        <div class="cell">
+          <div class="cellhead">
+            <h3>Your text</h3><div class="grow"></div>
+            <button class="btn" id="sample" style="padding:5px 10px;font-size:12.5px">Load sample</button>
+            <button class="btn" id="clear" style="padding:5px 10px;font-size:12.5px">Clear</button>
+          </div>
+          <textarea id="in" spellcheck="false" placeholder="Paste the thing you were about to send to ChatGPT / Claude / Gemini…
+
+e.g. a stack trace with a connection string in it, a support ticket with a customer's details, a .env you want explained."></textarea>
+        </div>
+        <div class="cell">
+          <div class="cellhead">
+            <h3>Safe to paste</h3><div class="grow"></div>
+            <span id="copied" class="copied"></span>
+            <button class="btn pri" id="copy" style="padding:5px 12px;font-size:12.5px" disabled>Copy</button>
+          </div>
+          <div class="out" id="out"><span class="ph">Redacted text appears here as you type.</span></div>
+        </div>
+      </div>
+      <div class="findbar" id="findbar"><span class="none">Nothing detected yet.</span></div>
+      <details class="opts">
+        <summary>Detection settings</summary>
+        <div class="toggles" id="toggles"></div>
+        <div class="tgrow">
+          <button class="btn" id="allon" style="padding:4px 10px;font-size:12px">Enable all</button>
+          <button class="btn" id="reset" style="padding:4px 10px;font-size:12px">Reset to defaults</button>
+          <span class="mini">Private IPs and UUIDs are off by default — they are usually noise.</span>
+        </div>
+      </details>
+    </div>
+
+    <div class="panes" id="pane-restore" hidden>
+      <div class="grid">
+        <div class="cell">
+          <div class="cellhead"><h3>The model's reply (with placeholders)</h3></div>
+          <textarea id="rin" spellcheck="false" placeholder="Paste the AI's answer back here. Any [EMAIL_1] / [GH_TOKEN_1] style placeholders will be swapped back to the real values from your session above."></textarea>
+        </div>
+        <div class="cell">
+          <div class="cellhead">
+            <h3>Rehydrated</h3><div class="grow"></div>
+            <span id="rcopied" class="copied"></span>
+            <button class="btn pri" id="rcopy" style="padding:5px 12px;font-size:12.5px" disabled>Copy</button>
+          </div>
+          <div class="out" id="rout"><span class="ph">Your real values, back in place.</span></div>
+        </div>
+      </div>
+      <div class="findbar"><span class="mini" id="mapinfo">No mapping yet — scrub something on tab 1 first.</span></div>
+    </div>
+  </div>
+
+  <p class="small" style="text-align:center;margin:0 0 8px">
+    This is a single self-contained file. Save it anywhere, disconnect from the internet, and it still works — which is the easiest way to prove your text is not going anywhere.
+  </p>
+
+  <!-- ============ HOW ============ -->
+  <section id="how">
+    <h2>The workflow</h2>
+    <p class="lede">The point isn't just to delete sensitive strings — it's to keep the text usable, so the model still
+      gives you a real answer and you can read that answer with the real values in it.</p>
+    <div class="steps">
+      <div class="step"><div class="num">1</div><p><b>Paste.</b> Your log, ticket, config or trace goes into the left box. It never leaves the tab.</p></div>
+      <div class="step"><div class="num">2</div><p><b>Scrub.</b> Each sensitive value becomes a stable placeholder like <code>[EMAIL_1]</code>. The same value always gets the same placeholder, so relationships in the text survive.</p></div>
+      <div class="step"><div class="num">3</div><p><b>Ask.</b> Paste the safe version into any AI chat. It still reads as coherent text, so the answer is still useful.</p></div>
+      <div class="step"><div class="num">4</div><p><b>Restore.</b> Paste the reply into tab 2 and the placeholders turn back into your real values.</p></div>
+    </div>
+    <div class="note"><b>Be realistic about what this is.</b> ScrubKit is pattern-based. It reliably catches structured
+      things — keys, tokens, cards, IBANs, emails, IPs. It does not understand prose, so it will not catch a person's
+      name, a street address written out longhand, or a secret that looks like ordinary English. Read the output before
+      you send it. Treat this as a strong safety net, not a guarantee.</div>
+  </section>
+
+  <!-- ============ DETECTS ============ -->
+  <section id="detects">
+    <h2>What it catches</h2>
+    <p class="lede">Every detector is validated, not just regex-matched — card numbers are Luhn-checked, IBANs are
+      mod-97 checked, SSNs are structurally validated, and generic <code>secret = "..."</code> matches are entropy-gated.
+      That's what keeps version numbers, dates and order IDs out of your results.</p>
+    <div class="cards">
+      <div class="card"><h4>Credentials</h4><p>AWS keys & ARNs · GitHub PATs · OpenAI, Anthropic, Google & Hugging Face keys · Slack tokens and webhooks · Discord webhooks · Stripe keys · Twilio SIDs · SendGrid · npm, PyPI & GitLab tokens · JWTs · private key blocks</p></div>
+      <div class="card"><h4>Connection strings</h4><p>Postgres, MySQL, MongoDB, Redis, AMQP, MSSQL and ClickHouse URLs · any URL carrying <code>user:password@</code></p></div>
+      <div class="card"><h4>Personal data</h4><p>Email addresses · phone numbers · payment cards (Luhn-validated) · IBANs (checksum-validated) · US SSNs</p></div>
+      <div class="card"><h4>Infrastructure</h4><p>Public IPv4 · IPv6 · MAC addresses · AWS ARNs · optional private IPs and UUIDs</p></div>
+    </div>
+  </section>
+
+  <!-- ============ PRO ============ -->
+  <section id="pro">
+    <div class="pro">
+      <div class="prohead">
+        <div style="flex:1;min-width:260px">
+          <h2 style="margin-bottom:6px">ScrubKit Pro Pack</h2>
+          <p class="lede" style="margin-bottom:0">The web tool handles the thing you're pasting right now. The Pro Pack
+            handles everything else — whole folders, repos, logs, and the commits you're about to push.</p>
+        </div>
+        <div style="text-align:right">
+          <div class="price">$15 <span>once</span></div>
+          <a class="btn pri" id="buy" href="#" style="margin-top:8px;padding:11px 22px;font-size:15px">Get the Pro Pack</a>
+          <div class="mini" style="margin-top:7px">Instant download · no subscription</div>
+        </div>
+      </div>
+      <ul class="plist">
+        <li><b>Batch CLI</b> — scrub or restore whole folders, repos and log files in one command. Node, no dependencies.</li>
+        <li><b>Pre-commit hook</b> — blocks a commit that contains a live key, before it ever reaches your remote.</li>
+        <li><b>Offline single-file app</b> — the same UI as a local <code>.html</code>. Works air-gapped, ships to teammates.</li>
+        <li><b>Rule packs</b> — internal hostnames, employee ID formats, Jira keys, customer codes. Bring your own regexes.</li>
+        <li><b>Mapping files</b> — save the placeholder map, restore a reply hours later or on another machine.</li>
+        <li><b>CI recipe + the engine as a module</b> — <code>require()</code> it and wire it into your own scripts.</li>
+      </ul>
+      <table style="margin-top:22px">
+        <tr><th>&nbsp;</th><th class="c">Free web tool</th><th class="c">Pro Pack</th></tr>
+        <tr><td>Scrub &amp; restore pasted text</td><td class="c yes">✓</td><td class="c yes">✓</td></tr>
+        <tr><td>Runs fully offline</td><td class="c yes">✓</td><td class="c yes">✓</td></tr>
+        <tr><td>Whole folders &amp; repos</td><td class="c no">—</td><td class="c yes">✓</td></tr>
+        <tr><td>Pre-commit hook</td><td class="c no">—</td><td class="c yes">✓</td></tr>
+        <tr><td>Custom rule packs</td><td class="c no">—</td><td class="c yes">✓</td></tr>
+        <tr><td>Saved mapping files</td><td class="c no">—</td><td class="c yes">✓</td></tr>
+        <tr><td>Importable engine module</td><td class="c no">—</td><td class="c yes">✓</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ FAQ ============ -->
+  <section>
+    <h2>Questions</h2>
+    <details class="faq"><summary>Is my text really not uploaded?</summary><p>Correct. The detection engine is plain JavaScript running in your tab. There is no backend, no analytics call carrying your text, and no storage. You can verify it: open your browser's Network tab, scrub something, and watch nothing happen. You can also save this page and run it with your Wi-Fi off.</p></details>
+    <details class="faq"><summary>Why placeholders instead of just deleting the values?</summary><p>Because deleted text destroys the question. If three log lines mention the same host and you blank all three, the model can't tell they were the same host. Stable placeholders keep the structure — and they let you turn the answer back into something you can act on.</p></details>
+    <details class="faq"><summary>Will it catch names and addresses?</summary><p>No, and any tool that claims to catch them from regex alone is overselling. Names and free-form addresses need language models to spot reliably. ScrubKit deliberately sticks to things it can validate, so you get very few false positives — then you do a five-second read of the output.</p></details>
+    <details class="faq"><summary>What do I actually get when I buy the Pro Pack?</summary><p>A single ZIP, delivered instantly: the CLI, the pre-commit hook, the offline HTML app, the engine as an importable module, example rule packs, and a short setup guide. No account, no subscription, no licence server.</p></details>
+    <details class="faq"><summary>Can I use it at work?</summary><p>Yes. Both the free tool and the Pro Pack are yours to use on commercial work. The Pro Pack is licensed per person; if you want it for a whole team, get in touch and I'll sort out a team licence.</p></details>
+  </section>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div>🧼 <b>ScrubKit</b> — built by CodeCraft143. Free tool, forever. <a href="#pro">Pro Pack</a> · <a id="buy2" href="#">Gumroad</a></div>
+    <div style="margin-top:7px">ScrubKit reduces the chance of leaking sensitive data. It is a safety net, not a compliance product, and it makes no guarantee of completeness — always review output before sending.</div>
+  </div>
+</footer>
+
+<script>
+/* ===== engine (inlined) ===== */
+/*!
+ * ScrubKit Engine — deterministic, reversible redaction of secrets & PII.
+ * Zero dependencies. Runs identically in the browser and in Node.
+ *
+ * Design notes:
+ *  - Every detector is a pure regex + optional validator. Validators (Luhn,
+ *    IBAN mod-97, SSN structural rules) exist to kill false positives, which
+ *    are the main reason naive redactors are unusable on real text.
+ *  - Redaction is *consistent pseudonymization*: the same raw value always maps
+ *    to the same placeholder within a document, so the text stays coherent for
+ *    an LLM and the model's reply can be rehydrated afterwards.
+ *  - Overlapping matches are resolved by (priority, length) so that e.g. a
+ *    Postgres URL wins over the bare hostname inside it.
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.ScrubKit = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  // ---------------------------------------------------------------- helpers
+
+  function luhn(digits) {
+    var sum = 0, alt = false;
+    for (var i = digits.length - 1; i >= 0; i--) {
+      var n = digits.charCodeAt(i) - 48;
+      if (n < 0 || n > 9) return false;
+      if (alt) { n *= 2; if (n > 9) n -= 9; }
+      sum += n; alt = !alt;
+    }
+    return digits.length > 0 && sum % 10 === 0;
+  }
+
+  function ibanValid(raw) {
+    var s = raw.replace(/[\s-]/g, '').toUpperCase();
+    if (s.length < 15 || s.length > 34) return false;
+    s = s.slice(4) + s.slice(0, 4);
+    var expanded = '';
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      if (c >= 65 && c <= 90) expanded += (c - 55);
+      else if (c >= 48 && c <= 57) expanded += s[i];
+      else return false;
+    }
+    // mod-97 over a long numeric string, chunked to stay in safe integer range
+    var rem = 0;
+    for (var j = 0; j < expanded.length; j++) {
+      rem = (rem * 10 + (expanded.charCodeAt(j) - 48)) % 97;
+    }
+    return rem === 1;
+  }
+
+  function ssnValid(m) {
+    var d = m.replace(/\D/g, '');
+    if (d.length !== 9) return false;
+    var area = d.slice(0, 3), group = d.slice(3, 5), serial = d.slice(5);
+    if (area === '000' || area === '666' || area[0] === '9') return false;
+    if (group === '00' || serial === '0000') return false;
+    if (/^(\d)\1{8}$/.test(d)) return false;       // 111111111
+    if (d === '123456789') return false;
+    return true;
+  }
+
+  function isPrivateIPv4(ip) {
+    var p = ip.split('.').map(Number);
+    if (p.length !== 4 || p.some(function (n) { return isNaN(n) || n > 255; })) return false;
+    return p[0] === 10 ||
+      (p[0] === 172 && p[1] >= 16 && p[1] <= 31) ||
+      (p[0] === 192 && p[1] === 168) ||
+      p[0] === 127 ||
+      (p[0] === 169 && p[1] === 254) ||
+      p[0] === 0;
+  }
+
+  function validIPv4(ip) {
+    var p = ip.split('.');
+    if (p.length !== 4) return false;
+    for (var i = 0; i < 4; i++) {
+      if (!/^\d{1,3}$/.test(p[i])) return false;
+      var n = +p[i];
+      if (n > 255) return false;
+      if (p[i].length > 1 && p[i][0] === '0') return false;   // no leading zeros
+    }
+    return true;
+  }
+
+  // Entropy gate for "looks like a random secret" heuristics.
+  function shannon(s) {
+    var freq = Object.create(null), i;
+    for (i = 0; i < s.length; i++) freq[s[i]] = (freq[s[i]] || 0) + 1;
+    var h = 0;
+    for (var k in freq) { var p = freq[k] / s.length; h -= p * Math.log2(p); }
+    return h;
+  }
+
+  // ------------------------------------------------------------- detectors
+  // priority: higher wins when two matches overlap.
+
+  var DETECTORS = [
+    // ---- private keys & certs -------------------------------------------
+    { id: 'private_key', label: 'Private key', group: 'secret', priority: 100,
+      re: /-----BEGIN[ A-Z0-9]*PRIVATE KEY-----[\s\S]*?-----END[ A-Z0-9]*PRIVATE KEY-----/g },
+    { id: 'pgp_key', label: 'PGP private key', group: 'secret', priority: 100,
+      re: /-----BEGIN PGP PRIVATE KEY BLOCK-----[\s\S]*?-----END PGP PRIVATE KEY BLOCK-----/g },
+
+    // ---- vendor-specific credentials (very low false-positive rate) ------
+    { id: 'aws_access_key', label: 'AWS access key ID', group: 'secret', priority: 95,
+      re: /\b((?:AKIA|ASIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|APKA)[A-Z0-9]{16})\b/g },
+    { id: 'aws_arn', label: 'AWS ARN', group: 'infra', priority: 70,
+      re: /\barn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:\d{12}:[^\s"'<>]+/g },
+    { id: 'gh_token', label: 'GitHub token', group: 'secret', priority: 95,
+      re: /\b(gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,})\b/g },
+    { id: 'openai_key', label: 'OpenAI API key', group: 'secret', priority: 95,
+      re: /\b(sk-(?:proj|svcacct|admin)?-?[A-Za-z0-9_-]{20,})\b/g },
+    { id: 'anthropic_key', label: 'Anthropic API key', group: 'secret', priority: 96,
+      re: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/g },
+    { id: 'google_api_key', label: 'Google API key', group: 'secret', priority: 95,
+      re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
+    { id: 'slack_token', label: 'Slack token', group: 'secret', priority: 95,
+      re: /\bxox[baprse]-[A-Za-z0-9-]{10,}\b/g },
+    { id: 'slack_webhook', label: 'Slack webhook', group: 'secret', priority: 95,
+      re: /https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9\/+_-]{20,}/g },
+    { id: 'discord_webhook', label: 'Discord webhook', group: 'secret', priority: 95,
+      re: /https:\/\/(?:canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+/g },
+    { id: 'stripe_key', label: 'Stripe key', group: 'secret', priority: 95,
+      re: /\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b/g },
+    { id: 'twilio_sid', label: 'Twilio SID', group: 'secret', priority: 90,
+      re: /\b(?:AC|SK)[0-9a-fA-F]{32}\b/g },
+    { id: 'sendgrid_key', label: 'SendGrid key', group: 'secret', priority: 95,
+      re: /\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\b/g },
+    { id: 'npm_token', label: 'npm token', group: 'secret', priority: 95,
+      re: /\bnpm_[A-Za-z0-9]{36}\b/g },
+    { id: 'pypi_token', label: 'PyPI token', group: 'secret', priority: 95,
+      re: /\bpypi-[A-Za-z0-9_-]{50,}\b/g },
+    { id: 'hf_token', label: 'Hugging Face token', group: 'secret', priority: 95,
+      re: /\bhf_[A-Za-z0-9]{34,}\b/g },
+    { id: 'gitlab_token', label: 'GitLab token', group: 'secret', priority: 95,
+      re: /\bglpat-[A-Za-z0-9_-]{20,}\b/g },
+    { id: 'jwt', label: 'JWT', group: 'secret', priority: 92,
+      re: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
+
+    // ---- connection strings ---------------------------------------------
+    { id: 'db_url', label: 'Database URL', group: 'secret', priority: 88,
+      re: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis(?:s)?|amqp(?:s)?|mssql|clickhouse):\/\/[^\s"'<>`]+/gi },
+    { id: 'basic_auth_url', label: 'URL with credentials', group: 'secret', priority: 88,
+      re: /\bhttps?:\/\/[^\s:@\/]+:[^\s:@\/]+@[^\s"'<>`]+/g },
+
+    // ---- generic assigned secrets (entropy-gated) ------------------------
+    { id: 'assigned_secret', label: 'Assigned secret', group: 'secret', priority: 60,
+      re: /\b((?:api[_-]?key|apikey|secret[_-]?key|secret|token|passwd|password|pwd|auth[_-]?token|access[_-]?token|client[_-]?secret|private[_-]?key)\s*[:=]\s*)(["'`]?)([^\s"'`,;]{8,})\2/gi,
+      captureGroup: 3,
+      validate: function (v) {
+        if (/^(your|my|the|some|example|changeme|placeholder|xxx+|<.*>|\{\{.*\}\}|\$\{.*\}|null|none|true|false|undefined)$/i.test(v)) return false;
+        if (/^\**$/.test(v) || /^\.+$/.test(v)) return false;
+        if (/^(process\.env|os\.environ|env\.)/i.test(v)) return false;
+        return shannon(v) >= 2.2;
+      } },
+
+    // ---- financial --------------------------------------------------------
+    { id: 'credit_card', label: 'Payment card number', group: 'pii', priority: 85,
+      re: /\b(?:\d[ -]*?){13,19}\b/g,
+      validate: function (v) {
+        var d = v.replace(/\D/g, '');
+        if (d.length < 13 || d.length > 19) return false;
+        if (/^(\d)\1+$/.test(d)) return false;
+        if (!/^(4|5[1-5]|2(2[2-9]|[3-6]|7[01]|720)|3[47]|3(0[0-5]|[68])|6(011|5|4[4-9]|2)|8|9)/.test(d)) return false;
+        return luhn(d);
+      } },
+    { id: 'iban', label: 'IBAN', group: 'pii', priority: 85,
+      re: /\b[A-Z]{2}\d{2}[ ]?(?:[A-Z0-9]{4}[ ]?){2,7}[A-Z0-9]{1,4}\b/g,
+      validate: ibanValid },
+    { id: 'us_ssn', label: 'US SSN', group: 'pii', priority: 84,
+      re: /\b\d{3}[- ]\d{2}[- ]\d{4}\b/g,
+      validate: ssnValid },
+
+    // ---- contact PII ------------------------------------------------------
+    { id: 'email', label: 'Email address', group: 'pii', priority: 80,
+      re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24}\b/g,
+      validate: function (v) {
+        return !/@(example\.(com|org|net)|test\.com|localhost|domain\.com|email\.com|yourcompany\.com)$/i.test(v);
+      } },
+    { id: 'phone', label: 'Phone number', group: 'pii', priority: 72,
+      re: /(?:\+\d{1,3}[ .-]?)?(?:\(\d{2,4}\)[ .-]?|\d{2,4}[ .-])\d{3,4}[ .-]\d{3,4}(?:[ .-]?\d{1,4})?/g,
+      validate: function (v) {
+        var d = v.replace(/\D/g, '');
+        if (d.length < 9 || d.length > 15) return false;
+        if (/^(\d)\1+$/.test(d)) return false;
+        if (/^(19|20)\d{2}[-.]/.test(v)) return false;          // looks like a date
+        return true;
+      } },
+
+    // ---- network / infra --------------------------------------------------
+    { id: 'ipv4_public', label: 'Public IPv4', group: 'infra', priority: 68,
+      re: /\b\d{1,3}(?:\.\d{1,3}){3}\b/g,
+      validate: function (v) { return validIPv4(v) && !isPrivateIPv4(v); } },
+    { id: 'ipv4_private', label: 'Private IPv4', group: 'infra', priority: 67, defaultOff: true,
+      re: /\b\d{1,3}(?:\.\d{1,3}){3}\b/g,
+      validate: function (v) { return validIPv4(v) && isPrivateIPv4(v); } },
+    { id: 'ipv6', label: 'IPv6 address', group: 'infra', priority: 66,
+      re: /\b(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}\b/g },
+    { id: 'mac', label: 'MAC address', group: 'infra', priority: 66,
+      re: /\b(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b/g },
+    { id: 'uuid', label: 'UUID', group: 'infra', priority: 40, defaultOff: true,
+      re: /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\b/g }
+  ];
+
+  var DETECTOR_BY_ID = {};
+  DETECTORS.forEach(function (d) { DETECTOR_BY_ID[d.id] = d; });
+
+  // -------------------------------------------------------------- redaction
+
+  function buildCustomDetectors(custom) {
+    // custom: [{ id, label, pattern, flags, group }]  — user/team rule packs
+    return (custom || []).map(function (c, i) {
+      var flags = c.flags || 'g';
+      if (flags.indexOf('g') === -1) flags += 'g';
+      return {
+        id: c.id || ('custom_' + i),
+        label: c.label || 'Custom rule',
+        group: c.group || 'custom',
+        priority: typeof c.priority === 'number' ? c.priority : 90,
+        re: new RegExp(c.pattern, flags),
+        captureGroup: c.captureGroup
+      };
+    });
+  }
+
+  /**
+   * redact(text, options) -> { text, map, findings, stats }
+   *   options.enabled     : array of detector ids to run (default: all not defaultOff)
+   *   options.custom      : array of custom rule objects
+   *   options.placeholder : function(label, index, detectorId) -> string
+   */
+  function redact(text, options) {
+    options = options || {};
+    if (typeof text !== 'string') text = String(text == null ? '' : text);
+
+    var active = DETECTORS.filter(function (d) {
+      if (options.enabled) return options.enabled.indexOf(d.id) !== -1;
+      return !d.defaultOff;
+    }).concat(buildCustomDetectors(options.custom));
+
+    // 1. collect candidate matches
+    var candidates = [];
+    active.forEach(function (d) {
+      var re = new RegExp(d.re.source, d.re.flags);
+      var m;
+      while ((m = re.exec(text)) !== null) {
+        if (m[0] === '') { re.lastIndex++; continue; }
+        var value = m[0], start = m.index;
+        if (d.captureGroup && m[d.captureGroup] !== undefined) {
+          value = m[d.captureGroup];
+          var off = m[0].lastIndexOf(value);
+          start = m.index + (off === -1 ? 0 : off);
+        }
+        value = value.replace(/[\s.,;:]+$/, '');
+        if (!value) continue;
+        if (d.validate && !d.validate(value)) continue;
+        candidates.push({
+          det: d, value: value, start: start, end: start + value.length,
+          priority: d.priority, len: value.length
+        });
+      }
+    });
+
+    // 2. resolve overlaps — highest priority wins, then longest match
+    candidates.sort(function (a, b) {
+      return (b.priority - a.priority) || (b.len - a.len) || (a.start - b.start);
+    });
+    var taken = [], accepted = [];
+    candidates.forEach(function (c) {
+      for (var i = 0; i < taken.length; i++) {
+        if (c.start < taken[i][1] && c.end > taken[i][0]) return;   // overlaps
+      }
+      taken.push([c.start, c.end]);
+      accepted.push(c);
+    });
+
+    // 3. assign stable placeholders (same raw value -> same token)
+    var byValue = Object.create(null);
+    var counters = Object.create(null);
+    var map = Object.create(null);
+    var mkPlaceholder = options.placeholder || function (label, idx, id) {
+      return '[' + String(id).toUpperCase() + '_' + idx + ']';
+    };
+
+    accepted.sort(function (a, b) { return a.start - b.start; });
+    accepted.forEach(function (c) {
+      var key = c.det.id + ' ' + c.value;
+      if (!byValue[key]) {
+        counters[c.det.id] = (counters[c.det.id] || 0) + 1;
+        var token = mkPlaceholder(c.det.label, counters[c.det.id], c.det.id);
+        byValue[key] = token;
+        map[token] = c.value;
+      }
+      c.token = byValue[key];
+    });
+
+    // 4. rebuild the string
+    var out = '', cursor = 0;
+    accepted.forEach(function (c) {
+      out += text.slice(cursor, c.start) + c.token;
+      cursor = c.end;
+    });
+    out += text.slice(cursor);
+
+    // 5. summarise
+    var stats = Object.create(null);
+    accepted.forEach(function (c) {
+      stats[c.det.id] = stats[c.det.id] || { label: c.det.label, group: c.det.group, count: 0 };
+      stats[c.det.id].count++;
+    });
+
+    return {
+      text: out,
+      map: map,
+      findings: accepted.map(function (c) {
+        return { id: c.det.id, label: c.det.label, group: c.det.group,
+                 value: c.value, token: c.token, start: c.start, end: c.end };
+      }),
+      stats: stats,
+      count: accepted.length
+    };
+  }
+
+  /** restore(text, map) — put the real values back into an LLM's reply. */
+  function restore(text, map) {
+    if (!map) return text;
+    var tokens = Object.keys(map).sort(function (a, b) { return b.length - a.length; });
+    var out = String(text);
+    tokens.forEach(function (t) {
+      out = out.split(t).join(map[t]);
+    });
+    return out;
+  }
+
+  return {
+    version: '1.0.0',
+    detectors: DETECTORS.map(function (d) {
+      return { id: d.id, label: d.label, group: d.group, defaultOff: !!d.defaultOff };
+    }),
+    redact: redact,
+    restore: restore,
+    _internals: { luhn: luhn, ibanValid: ibanValid, ssnValid: ssnValid, shannon: shannon }
+  };
+});
+
+/* ===== ui ===== */
+(function(){
+  var GUMROAD = "https://codecraft143.gumroad.com/l/scrubkit";
+  document.getElementById('buy').href = GUMROAD;
+  document.getElementById('buy2').href = GUMROAD;
+  document.querySelector('.btn.pri[href="#pro"]');
+
+  var $ = function(id){ return document.getElementById(id); };
+  var inEl=$('in'), outEl=$('out'), findbar=$('findbar'), togglesEl=$('toggles');
+  var lastMap = null;
+
+  var DEFAULTS = ScrubKit.detectors.filter(function(d){return !d.defaultOff;}).map(function(d){return d.id;});
+  var enabled = DEFAULTS.slice();
+
+  function renderToggles(){
+    togglesEl.innerHTML='';
+    ScrubKit.detectors.forEach(function(d){
+      var b=document.createElement('button');
+      b.className='tg'+(enabled.indexOf(d.id)!==-1?' on':'');
+      b.textContent=d.label;
+      b.onclick=function(){
+        var i=enabled.indexOf(d.id);
+        if(i===-1) enabled.push(d.id); else enabled.splice(i,1);
+        renderToggles(); run();
+      };
+      togglesEl.appendChild(b);
+    });
+  }
+
+  function esc(s){ return s.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
+
+  function run(){
+    var src = inEl.value;
+    if(!src.trim()){
+      outEl.innerHTML='<span class="ph">Redacted text appears here as you type.</span>';
+      findbar.innerHTML='<span class="none">Nothing detected yet.</span>';
+      $('copy').disabled=true; lastMap=null; updateMapInfo(); return;
+    }
+    var r = ScrubKit.redact(src,{enabled:enabled});
+    lastMap = r.map;
+
+    // highlight placeholders in the output
+    var html = esc(r.text).replace(/\[[A-Z0-9_]+_\d+\]/g,function(m){return '<span class="tok">'+m+'</span>';});
+    outEl.innerHTML = html;
+    $('copy').disabled = false;
+    $('copy').dataset.val = r.text;
+
+    var keys = Object.keys(r.stats);
+    if(!keys.length){
+      findbar.innerHTML='<span class="none">No sensitive values found with the current settings.</span>';
+    } else {
+      findbar.innerHTML = '<span class="mini" style="margin-right:4px">Replaced '+r.count+':</span>' +
+        keys.map(function(k){
+          return '<span class="chip g-'+r.stats[k].group+'">'+esc(r.stats[k].label)+' <span class="n">'+r.stats[k].count+'</span></span>';
+        }).join('');
+    }
+    updateMapInfo(); restoreRun();
+  }
+
+  function updateMapInfo(){
+    var n = lastMap ? Object.keys(lastMap).length : 0;
+    $('mapinfo').textContent = n
+      ? n+' placeholder'+(n===1?'':'s')+' held in memory for this session — paste the reply above to rehydrate it.'
+      : 'No mapping yet — scrub something on tab 1 first.';
+  }
+
+  function restoreRun(){
+    var v = $('rin').value;
+    if(!v.trim()){
+      $('rout').innerHTML='<span class="ph">Your real values, back in place.</span>';
+      $('rcopy').disabled=true; return;
+    }
+    var t = ScrubKit.restore(v, lastMap||{});
+    $('rout').textContent = t;
+    $('rcopy').disabled=false; $('rcopy').dataset.val=t;
+  }
+
+  function copyFrom(btn, flag){
+    var v = btn.dataset.val||'';
+    var done=function(){ flag.textContent='Copied'; setTimeout(function(){flag.textContent='';},1600); };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(v).then(done,function(){fallback(v,done);});
+    } else fallback(v,done);
+  }
+  function fallback(v,done){
+    var ta=document.createElement('textarea'); ta.value=v; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){}
+    document.body.removeChild(ta);
+  }
+
+  var SAMPLE = [
+    "Sev-2 postmortem draft — do not circulate",
+    "",
+    "18:42 UTC  api-gw returned 500 for 12% of requests.",
+    "           DSN in use: postgres://" + "svc_orders:9Kx%40rT2vLp@orders-db-01.corp.internal:5432/orders",
+    "18:44 UTC  Rolled back from 3.11.9 to 3.11.8. Deploy came from 52.94.236.248.",
+    "           Runner used token gh" + "p_8fJ2kLmQ9wXzR4nB7vC1sD6yH3gT0pZaEuIo",
+    "18:51 UTC  Paged on-call: dev.ops@northwind-logistics.com / +1 415-555-0142",
+    "",
+    "Customer impact: order #88213 for maria.gonzalez@northwind-logistics.com failed twice.",
+    "Card on file 5555 5555 5555 4444 was authorised but not captured. Refund IBAN GB82WEST12345698765432.",
+    "",
+    "Infra: role arn:aws:iam::123456789012:role/DeployBot, key AKIA" + "IOSFODNN7EXAMPLE",
+    "Config had  api_key = \"8fj39dKs02mzQ1xRb7Tn\"  committed by mistake.",
+    "",
+    "Question for the AI: what's the most likely cause of the 500s, and what should we change?"
+  ].join("\n");
+
+  $('sample').onclick=function(){ inEl.value=SAMPLE; run(); };
+  $('clear').onclick=function(){ inEl.value=''; $('rin').value=''; run(); };
+  $('copy').onclick=function(){ copyFrom(this,$('copied')); };
+  $('rcopy').onclick=function(){ copyFrom(this,$('rcopied')); };
+  $('allon').onclick=function(){ enabled=ScrubKit.detectors.map(function(d){return d.id;}); renderToggles(); run(); };
+  $('reset').onclick=function(){ enabled=DEFAULTS.slice(); renderToggles(); run(); };
+  inEl.addEventListener('input',run);
+  $('rin').addEventListener('input',restoreRun);
+
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(t){
+    t.onclick=function(){
+      Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(x){x.classList.remove('on');});
+      t.classList.add('on');
+      $('pane-scrub').hidden = t.dataset.tab!=='scrub';
+      $('pane-restore').hidden = t.dataset.tab!=='restore';
+    };
+  });
+
+  renderToggles(); run();
+})();
+</script>
+</body>
+</html>
