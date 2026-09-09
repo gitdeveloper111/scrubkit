@@ -1,0 +1,13 @@
+{
+  "name": "scrubkit",
+  "version": "1.0.0",
+  "description": "Strip secrets and PII out of text before you paste it into an AI chat, and put the real values back into the reply. Zero dependencies, browser + Node.",
+  "main": "scrubkit.js",
+  "scripts": { "test": "node test.js" },
+  "keywords": ["redaction","pii","secrets","privacy","llm","ai","chatgpt","claude",
+               "anonymization","gdpr","secret-scanning","data-masking","prompt"],
+  "license": "MIT",
+  "files": ["scrubkit.js", "index.html", "README.md", "LICENSE"],
+  "engines": { "node": ">=16" },
+  "repository": { "type": "git", "url": "git+https://github.com/gitdeveloper111/scrubkit.git" }
+}
