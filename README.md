@@ -1,5 +1,9 @@
 # ScrubKit
 
+[![tests](https://github.com/gitdeveloper111/scrubkit/actions/workflows/test.yml/badge.svg)](https://github.com/gitdeveloper111/scrubkit/actions/workflows/test.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](package.json)
+
 Strip secrets and PII out of text **before** you paste it into an AI chat — and put the
 real values back into the model's reply.
 
